@@ -15,6 +15,210 @@ function saveItems(items){
   localStorage.setItem(KEY, JSON.stringify(items));
 }
 document.getElementById("btnAddHome").addEventListener("click", () => openEdit(null));
+/* ====== GitHub Sync (free cloud) ======
+   Guarda/lee ITEMS en un archivo del repo usando GitHub Contents API.
+   Requiere token con "Contents: Read and write" sólo para tu repo.
+*/
+const SYNC_KEY = "cd_sync_github_v1";
+
+function loadSyncCfg(){
+  try{
+    const raw = localStorage.getItem(SYNC_KEY);
+    if(!raw) return null;
+    return JSON.parse(raw);
+  }catch{ return null; }
+}
+function saveSyncCfg(cfg){
+  localStorage.setItem(SYNC_KEY, JSON.stringify(cfg));
+}
+
+function setSyncStatus(msg){
+  const el = document.getElementById("syncStatus");
+  if(el) el.textContent = msg;
+}
+
+let syncCfg = loadSyncCfg();
+// cache del SHA del archivo remoto (necesario para update)
+let remoteSha = null;
+let syncInFlight = false;
+let syncTimer = null;
+
+function githubApiHeaders(){
+  return {
+    "Accept": "application/vnd.github+json",
+    "Authorization": `Bearer ${syncCfg.token}`,
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+}
+
+// GET contents -> devuelve {content(base64), sha}
+async function ghGetFile(){
+  const url = `https://api.github.com/repos/${syncCfg.owner}/${syncCfg.repo}/contents/${syncCfg.path}?ref=${encodeURIComponent(syncCfg.branch)}`;
+  const res = await fetch(url, { headers: githubApiHeaders() });
+  if(res.status === 404) return { exists:false };
+  if(!res.ok) throw new Error(`GitHub GET error: ${res.status}`);
+  const data = await res.json();
+  return { exists:true, sha:data.sha, content:data.content };
+}
+
+// PUT contents
+async function ghPutFile(jsonText, message){
+  const url = `https://api.github.com/repos/${syncCfg.owner}/${syncCfg.repo}/contents/${syncCfg.path}`;
+  const body = {
+    message,
+    content: btoa(unescape(encodeURIComponent(jsonText))), // base64 unicode-safe
+    branch: syncCfg.branch
+  };
+  if(remoteSha) body.sha = remoteSha;
+
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { ...githubApiHeaders(), "Content-Type":"application/json" },
+    body: JSON.stringify(body)
+  });
+  if(!res.ok) throw new Error(`GitHub PUT error: ${res.status}`);
+  const out = await res.json();
+  remoteSha = out.content?.sha || remoteSha;
+  return true;
+}
+
+function normalizeItem(x){
+  return {
+    id: x.id || uid(),
+    artist: x.artist || "",
+    album: x.album || "",
+    city: x.city || "",
+    store: x.store || "",
+    price: x.price || "",
+    date: x.date || "",
+    state: x.state || "Nuevo",
+    discogs: !!x.discogs,
+    notes: x.notes || "",
+    youtube: x.youtube || "",
+    image: x.image || "",
+    createdAt: x.createdAt || Date.now(),
+    updatedAt: x.updatedAt || Date.now(),
+  };
+}
+
+// Merge “pro”: por id y updatedAt (gana el más nuevo)
+function mergeCollections(localItems, remoteItems){
+  const map = new Map();
+  for(const it of remoteItems.map(normalizeItem)) map.set(it.id, it);
+  for(const it of localItems.map(normalizeItem)){
+    const prev = map.get(it.id);
+    if(!prev || (it.updatedAt || 0) >= (prev.updatedAt || 0)){
+      map.set(it.id, it);
+    }
+  }
+  // ordenar por updatedAt desc
+  return [...map.values()].sort((a,b) => (b.updatedAt||0)-(a.updatedAt||0));
+}
+
+async function syncPull(){
+  if(!syncCfg) { setSyncStatus("⚠️ Falta configurar"); return; }
+  if(syncInFlight) return;
+  syncInFlight = true;
+  try{
+    setSyncStatus("⬇️ Trayendo de GitHub...");
+    const file = await ghGetFile();
+    if(!file.exists){
+      setSyncStatus("ℹ️ No existe data/cds.json en el repo (crealo con [])");
+      return;
+    }
+    remoteSha = file.sha;
+
+    const jsonText = decodeURIComponent(escape(atob(file.content.replace(/\n/g,""))));
+    const remote = JSON.parse(jsonText);
+    if(!Array.isArray(remote)) throw new Error("Remote JSON no es array");
+
+    ITEMS = mergeCollections(ITEMS, remote);
+    refresh(); // guarda local + re-render
+    setSyncStatus("✅ Traído y fusionado (GitHub → este dispositivo)");
+  }catch(e){
+    setSyncStatus("❌ Error pull: " + (e?.message || e));
+  }finally{
+    syncInFlight = false;
+  }
+}
+
+async function syncPush(){
+  if(!syncCfg) { setSyncStatus("⚠️ Falta configurar"); return; }
+  if(syncInFlight) return;
+  syncInFlight = true;
+  try{
+    setSyncStatus("⬆️ Subiendo a GitHub...");
+    // asegurar SHA actualizado (si otro dispositivo subió antes)
+    const file = await ghGetFile();
+    if(file.exists) remoteSha = file.sha;
+    else remoteSha = null;
+
+    const payload = JSON.stringify(ITEMS.map(normalizeItem), null, 2);
+    await ghPutFile(payload, "Update cd collection");
+    setSyncStatus("✅ Subido (este dispositivo → GitHub)");
+  }catch(e){
+    setSyncStatus("❌ Error push: " + (e?.message || e));
+  }finally{
+    syncInFlight = false;
+  }
+}
+
+async function syncNow(){
+  // estrategia robusta:
+  // 1) pull (trae cambios de otros)
+  // 2) push (sube tu estado final ya mergeado)
+  await syncPull();
+  await syncPush();
+}
+
+// auto-sync “suave”: cuando guardás, esperamos 2s y subimos
+function scheduleAutoPush(){
+  if(!syncCfg) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => syncPush(), 2000);
+}
+
+/* UI: modal simple de configuración */
+function openSyncSettings(){
+  const cur = syncCfg || { owner:"ignacioalfaro", repo:"cd-collection", branch:"main", path:"data/cds.json", token:"" };
+
+  openModal("🔑 Configurar GitHub Sync", `
+    <div class="formgrid">
+      <div class="field"><label>Owner</label><input id="s_owner" value="${esc(cur.owner)}"></div>
+      <div class="field"><label>Repo</label><input id="s_repo" value="${esc(cur.repo)}"></div>
+      <div class="field"><label>Branch</label><input id="s_branch" value="${esc(cur.branch)}"></div>
+      <div class="field"><label>Path</label><input id="s_path" value="${esc(cur.path)}"></div>
+      <div class="field full"><label>Token (Fine-grained)</label><input id="s_token" value="${esc(cur.token)}" placeholder="github_pat_..."></div>
+      <div class="muted full">
+        Requiere permisos: Contents (read+write) sólo para este repo.
+      </div>
+    </div>
+    <div class="actions" style="margin-top:14px;">
+      <button class="btn" id="btnSaveSync">💾 Guardar</button>
+      <button class="btn ghost" id="btnCancelSync">Cancelar</button>
+    </div>
+  `);
+
+  document.getElementById("btnCancelSync").addEventListener("click", closeModal);
+  document.getElementById("btnSaveSync").addEventListener("click", async () => {
+    const cfg = {
+      owner: document.getElementById("s_owner").value.trim(),
+      repo: document.getElementById("s_repo").value.trim(),
+      branch: document.getElementById("s_branch").value.trim() || "main",
+      path: document.getElementById("s_path").value.trim() || "data/cds.json",
+      token: document.getElementById("s_token").value.trim(),
+    };
+    if(!cfg.owner || !cfg.repo || !cfg.token){
+      alert("Completá owner, repo y token.");
+      return;
+    }
+    syncCfg = cfg;
+    saveSyncCfg(cfg);
+    closeModal();
+    setSyncStatus("✅ Configurado. Sincronizando...");
+    await syncNow();
+  });
+}
 /* ====== Utilities ====== */
 function uid(){
   return Math.random().toString(36).slice(2,10) + Date.now().toString(36);
