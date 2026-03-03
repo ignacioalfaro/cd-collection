@@ -40,6 +40,12 @@
         <div class="actions">
           <button class="btn" id="btnExport">⬇️ Exportar JSON</button>
           <label class="btn ghost" for="fileImport" style="cursor:pointer;">⬆️ Importar JSON</label>
+          <button class="btn ghost" id="btnExportCSV">⬇️ Exportar CSV (Excel)</button>
+
+<label class="btn ghost" style="cursor:pointer;">
+  ⬆️ Importar CSV (Excel)
+  <input id="fileImportCSV" type="file" accept=".csv,text/csv" style="display:none;">
+</label>
           <input id="fileImport" type="file" accept="application/json" hidden />
           <button class="btn ghost" id="btnSeed">✨ Cargar ejemplo</button>
         </div>
