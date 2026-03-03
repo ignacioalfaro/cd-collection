@@ -14,7 +14,7 @@ function loadItems(){
 function saveItems(items){
   localStorage.setItem(KEY, JSON.stringify(items));
 }
-
+document.getElementById("btnAddHome").addEventListener("click", () => openEdit(null));
 /* ====== Utilities ====== */
 function uid(){
   return Math.random().toString(36).slice(2,10) + Date.now().toString(36);
