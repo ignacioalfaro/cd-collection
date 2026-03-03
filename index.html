@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>🎧 Colección de CDs</title>
+
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0b1020" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🎧 <span>Colección de CDs</span></div>
+
+    <nav class="tabs" aria-label="Navegación">
+      <button class="tab active" data-page="home">🏠 Inicio</button>
+      <button class="tab" data-page="lib">📀 Colección</button>
+      <button class="tab" data-page="random">🎲 Random</button>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <!-- HOME -->
+    <section id="page-home" class="page">
+      <div class="kpis">
+        <div class="kpi"><div class="kpi-label">📀 CDs</div><div class="kpi-value" id="kTotal">—</div></div>
+        <div class="kpi"><div class="kpi-label">✅ Discogs</div><div class="kpi-value" id="kDiscogs">—</div></div>
+        <div class="kpi"><div class="kpi-label">🆕 Nuevo</div><div class="kpi-value" id="kNuevo">—</div></div>
+        <div class="kpi"><div class="kpi-label">♻️ Usado</div><div class="kpi-value" id="kUsado">—</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">🏆 Top artistas</div>
+        <div id="topArtists" class="rows"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">🧰 Backups</div>
+        <div class="actions">
+          <button class="btn" id="btnExport">⬇️ Exportar JSON</button>
+          <label class="btn ghost" for="fileImport" style="cursor:pointer;">⬆️ Importar JSON</label>
+          <input id="fileImport" type="file" accept="application/json" hidden />
+          <button class="btn ghost" id="btnSeed">✨ Cargar ejemplo</button>
+        </div>
+        <p class="hint">Tip: exportá cada tanto para no perder nada si borrás el historial del navegador.</p>
+      </div>
+
+      <div class="panel">
+        <button class="btn big" id="btnRandomHome">🎲 Recomendame un CD</button>
+      </div>
+    </section>
+
+    <!-- LIB -->
+    <section id="page-lib" class="page hidden">
+      <div class="toolbar">
+        <input id="q" placeholder="Buscar artista o álbum…" />
+        <select id="fEstado">
+          <option value="">Estado (todos)</option>
+          <option value="Nuevo">Nuevo</option>
+          <option value="Usado">Usado</option>
+        </select>
+        <select id="fDiscogs">
+          <option value="">Discogs (todos)</option>
+          <option value="1">Registrados</option>
+          <option value="0">No registrados</option>
+        </select>
+        <button class="btn" id="btnAdd">➕ Agregar</button>
+      </div>
+
+      <div id="libGrid" class="grid"></div>
+      <div class="spacer"></div>
+    </section>
+
+    <!-- RANDOM -->
+    <section id="page-random" class="page hidden">
+      <div class="panel">
+        <div class="actions">
+          <button class="btn" id="btnRandom">🎲 Nuevo Random</button>
+          <button class="btn ghost" data-nav="lib">📀 Ir a colección</button>
+        </div>
+      </div>
+      <div id="randomBox" class="panel hidden"></div>
+    </section>
+  </main>
+
+  <!-- MODAL -->
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="sheet">
+      <div class="sheet-head">
+        <div class="sheet-title" id="modalTitle">CD</div>
+        <button class="btn ghost" id="btnClose">✕</button>
+      </div>
+      <div class="sheet-body" id="modalBody"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
