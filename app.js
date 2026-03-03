@@ -602,7 +602,13 @@ document.getElementById("fileImport").addEventListener("change", (e) => {
   e.target.value = "";
 });
 document.getElementById("btnSeed").addEventListener("click", seedExample);
+document.getElementById("btnExportCSV").addEventListener("click", exportCSV);
 
+document.getElementById("fileImportCSV").addEventListener("change", (e) => {
+  const f = e.target.files?.[0];
+  if(f) importCSV(f);
+  e.target.value = "";
+});
 /* ====== PWA ====== */
 if("serviceWorker" in navigator){
   window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(()=>{}));
