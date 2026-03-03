@@ -1,4 +1,4 @@
-const CACHE = "cd-collection-v1";
+const CACHE = "cd-collection-v2";
 const ASSETS = [
   "./",
   "./index.html",
