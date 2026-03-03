@@ -413,7 +413,168 @@ function importJSON(file){
   };
   reader.readAsText(file);
 }
+function toCSVValue(v){
+  const s = String(v ?? "");
+  // escapar comillas dobles
+  const escaped = s.replaceAll('"', '""');
+  // si tiene coma, salto o comillas, envolver con "
+  return /[",\n\r]/.test(escaped) ? `"${escaped}"` : escaped;
+}
 
+function exportCSV(){
+  const headers = [
+    "artist","album","city","store","price","date","state","discogs","notes","youtube","image"
+  ];
+
+  const lines = [];
+  lines.push(headers.join(",")); // header
+
+  for(const it of ITEMS){
+    const row = [
+      it.artist,
+      it.album,
+      it.city,
+      it.store,
+      it.price,
+      it.date,
+      it.state,
+      it.discogs ? "1" : "0",
+      it.notes,
+      it.youtube,
+      it.image
+    ].map(toCSVValue).join(",");
+    lines.push(row);
+  }
+
+  const blob = new Blob([lines.join("\n")], {type:"text/csv;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "cd-collection.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+function parseCSV(text){
+  // parser simple que soporta comillas
+  const rows = [];
+  let row = [];
+  let cur = "";
+  let inQuotes = false;
+
+  for(let i=0;i<text.length;i++){
+    const ch = text[i];
+    const next = text[i+1];
+
+    if(inQuotes){
+      if(ch === '"' && next === '"'){ cur += '"'; i++; continue; }
+      if(ch === '"'){ inQuotes = false; continue; }
+      cur += ch;
+      continue;
+    }
+
+    if(ch === '"'){ inQuotes = true; continue; }
+    if(ch === ","){ row.push(cur); cur=""; continue; }
+    if(ch === "\n"){
+      row.push(cur); cur="";
+      // evitar filas vacías al final
+      if(row.some(x => String(x).trim() !== "")) rows.push(row);
+      row = [];
+      continue;
+    }
+    if(ch === "\r"){ continue; }
+
+    cur += ch;
+  }
+  // last cell
+  row.push(cur);
+  if(row.some(x => String(x).trim() !== "")) rows.push(row);
+
+  return rows;
+}
+
+function importCSV(file){
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const text = String(reader.result || "");
+      const rows = parseCSV(text);
+      if(rows.length < 2) throw new Error("CSV vacío");
+
+      const headers = rows[0].map(h => String(h||"").trim().toLowerCase());
+      const idx = (name) => headers.indexOf(name);
+
+      const map = {
+        artist: idx("artist"),
+        album: idx("album"),
+        city: idx("city"),
+        store: idx("store"),
+        price: idx("price"),
+        date: idx("date"),
+        state: idx("state"),
+        discogs: idx("discogs"),
+        notes: idx("notes"),
+        youtube: idx("youtube"),
+        image: idx("image"),
+      };
+
+      // soportar headers en español si tu CSV viene de tu sheet
+      const alt = (a,b) => map[a] !== -1 ? map[a] : idx(b);
+      map.artist = alt("artist","interprete");
+      map.city   = alt("city","ciudad de compra");
+      map.store  = alt("store","tienda");
+      map.price  = alt("price","precio");
+      map.date   = alt("date","fecha de compra");
+      map.state  = alt("state","estado");
+      map.notes  = alt("notes","observacion");
+      map.youtube= alt("youtube","youtube music link");
+      map.image  = alt("image","imagen_url");
+
+      const now = Date.now();
+      const imported = [];
+
+      for(let r=1;r<rows.length;r++){
+        const line = rows[r];
+        const get = (k) => {
+          const i = map[k];
+          return i >= 0 ? String(line[i] ?? "").trim() : "";
+        };
+
+        const discogsRaw = get("discogs").toLowerCase();
+        const discogs = discogsRaw === "1" || discogsRaw === "true" || discogsRaw === "si" || discogsRaw === "sí" || discogsRaw === "x";
+
+        const item = {
+          id: uid(),
+          artist: get("artist"),
+          album: get("album"),
+          city: get("city"),
+          store: get("store"),
+          price: get("price"),
+          date: get("date"),
+          state: get("state") || "Nuevo",
+          discogs,
+          notes: get("notes"),
+          youtube: get("youtube"),
+          image: get("image"),
+          createdAt: now,
+          updatedAt: now
+        };
+
+        if(!item.artist && !item.album) continue;
+        imported.push(item);
+      }
+
+      // Elegí: reemplazar todo o sumar
+      const replace = confirm("¿Querés REEMPLAZAR tu colección con lo importado?\nOK = Reemplazar\nCancelar = Sumar");
+      ITEMS = replace ? imported : imported.concat(ITEMS);
+
+      refresh();
+      alert(`Importado OK ✅ (${imported.length} CDs)`);
+    }catch(e){
+      alert("No pude importar ese CSV. Revisá que tenga encabezados (artist, album, etc).");
+    }
+  };
+  reader.readAsText(file);
+}
 function seedExample(){
   if(ITEMS.length && !confirm("Esto va a agregar ejemplos. ¿Seguimos?")) return;
   const now = Date.now();
